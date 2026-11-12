@@ -10,17 +10,15 @@ import {
     signOut
 } from "firebase/auth";
 import {
-    getFirestore,
-    doc,
-    setDoc,
-    getDoc,
-    collection,
-    addDoc,
+    getDatabase,
+    ref,
+    set,
+    get,
+    push,
     query,
-    where,
-    getDocs,
-    serverTimestamp
-} from "firebase/firestore";
+    orderByChild,
+    equalTo
+} from "firebase/database";
 
 // === CONFIGURAÇÃO DO FIREBASE ===
 const firebaseConfig = {
@@ -29,18 +27,18 @@ const firebaseConfig = {
     projectId: "studymind-9ca07",
     storageBucket: "studymind-9ca07.firebasestorage.app",
     messagingSenderId: "147660747676",
-    appId: "1:147660747676:web:a3f5746a187d3f0c8f8e59"
+    appId: "1:147660747676:web:a3f5746a187d3f0c8f8e59",
+    // ⚠️ Substitua pelo URL do seu Realtime Database (Console → Realtime Database)
+    databaseURL: "https://studymind-9ca07-default-rtdb.firebaseio.com"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = getDatabase(app);
 
 // === PROVEDORES ===
 const googleProvider = new GoogleAuthProvider();
 const microsoftProvider = new OAuthProvider('microsoft.com');
-// Se necessário, restrinja a um tenant específico:
-// microsoftProvider.setCustomParameters({ tenant: 'SEU_TENANT_ID_OU_DOMINIO' });[reference:1]
 
 // === ELEMENTOS DA UI ===
 const authScreen = document.getElementById('auth-screen');
@@ -54,9 +52,8 @@ const btnEmailAuth = document.getElementById('btn-email-auth');
 const toggleAuthMode = document.getElementById('toggle-auth-mode');
 const toggleText = document.getElementById('toggle-text');
 const roleSelection = document.getElementById('role-selection');
-const authError = document.getElementById('auth-error');
 
-let isSignUpMode = false; // Controla se o formulário de e-mail é para cadastro ou login
+let isSignUpMode = false;
 
 // === ALTERNAR ENTRE LOGIN E CADASTRO ===
 toggleAuthMode.addEventListener('click', (e) => {
@@ -75,7 +72,7 @@ toggleAuthMode.addEventListener('click', (e) => {
     }
 });
 
-// === FUNÇÕES AUXILIARES ===
+// === UTILITÁRIOS ===
 function showError(elementId, message) {
     const el = document.getElementById(elementId);
     if (el) {
@@ -91,29 +88,27 @@ function hideAllScreens() {
     companyDashboard.classList.remove('active');
 }
 
-// === SALVAR USUÁRIO NO FIRESTORE (se ainda não existir) ===
+// === USUÁRIO NO REALTIME DATABASE ===
 async function ensureUserDocument(user, role = null) {
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
+    const userRef = ref(db, 'users/' + user.uid);
+    const snapshot = await get(userRef);
 
-    if (!userSnap.exists()) {
-        // Se um papel não foi fornecido (ex: login social), usa 'student' como padrão
+    if (!snapshot.exists()) {
         const finalRole = role || 'student';
-        await setDoc(userRef, {
+        await set(userRef, {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName || '',
             role: finalRole,
-            createdAt: serverTimestamp()
+            createdAt: Date.now()
         });
         return finalRole;
     }
-    return userSnap.data().role;
+    return snapshot.val().role;
 }
 
-// === REDIRECIONAR COM BASE NO PAPEL ===
 async function redirectBasedOnRole(user) {
-    const role = await ensureUserDocument(user); // Lê o papel existente
+    const role = await ensureUserDocument(user);
     hideAllScreens();
 
     if (role === 'company') {
@@ -126,7 +121,7 @@ async function redirectBasedOnRole(user) {
     }
 }
 
-// === AUTENTICAÇÃO COM GOOGLE ===
+// === AUTENTICAÇÃO SOCIAL ===
 btnGoogle.addEventListener('click', async () => {
     try {
         const result = await signInWithPopup(auth, googleProvider);
@@ -136,7 +131,6 @@ btnGoogle.addEventListener('click', async () => {
     }
 });
 
-// === AUTENTICAÇÃO COM MICROSOFT ===
 btnMicrosoft.addEventListener('click', async () => {
     try {
         const result = await signInWithPopup(auth, microsoftProvider);
@@ -146,7 +140,7 @@ btnMicrosoft.addEventListener('click', async () => {
     }
 });
 
-// === AUTENTICAÇÃO COM E-MAIL/SENHA ===
+// === AUTENTICAÇÃO POR E-MAIL ===
 formEmailAuth.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('email').value.trim();
@@ -154,13 +148,11 @@ formEmailAuth.addEventListener('submit', async (e) => {
 
     try {
         if (isSignUpMode) {
-            // Cadastro
             const role = document.querySelector('input[name="role"]:checked').value;
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             await ensureUserDocument(userCredential.user, role);
             await redirectBasedOnRole(userCredential.user);
         } else {
-            // Login
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             await redirectBasedOnRole(userCredential.user);
         }
@@ -169,23 +161,11 @@ formEmailAuth.addEventListener('submit', async (e) => {
     }
 });
 
-// === OBSERVADOR DE ESTADO DE AUTENTICAÇÃO ===
+// === OBSERVADOR DE ESTADO ===
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // Usuário logado: verifica o documento e redireciona
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (userSnap.exists()) {
-            await redirectBasedOnRole(user);
-        } else {
-            // Usuário autenticado mas sem documento (ex: primeiro login social)
-            // Cria com papel padrão 'student'
-            await ensureUserDocument(user, 'student');
-            await redirectBasedOnRole(user);
-        }
+        await redirectBasedOnRole(user);
     } else {
-        // Usuário deslogado
         hideAllScreens();
         authScreen.classList.add('active');
     }
@@ -195,9 +175,11 @@ onAuthStateChanged(auth, async (user) => {
 document.getElementById('btn-logout-student').addEventListener('click', () => signOut(auth));
 document.getElementById('btn-logout-company').addEventListener('click', () => signOut(auth));
 
-// === FUNÇÕES DA EMPRESA ===
+// =====================================================
+// FUNÇÕES DA EMPRESA
+// =====================================================
 
-// Criar Curso
+// Criar curso
 document.getElementById('form-create-course').addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
@@ -207,11 +189,12 @@ document.getElementById('form-create-course').addEventListener('submit', async (
     const description = document.getElementById('course-description').value.trim();
 
     try {
-        await addDoc(collection(db, 'courses'), {
+        const newCourseRef = push(ref(db, 'courses'));
+        await set(newCourseRef, {
             companyId: user.uid,
             title,
             description,
-            createdAt: serverTimestamp()
+            createdAt: Date.now()
         });
         document.getElementById('form-create-course').reset();
         loadCompanyCourses(user.uid);
@@ -221,22 +204,26 @@ document.getElementById('form-create-course').addEventListener('submit', async (
     }
 });
 
-// Carregar cursos da empresa
+// Listar cursos da empresa
 async function loadCompanyCourses(companyId) {
     const list = document.getElementById('company-courses-list');
     list.innerHTML = '<p class="empty-state">Carregando...</p>';
 
-    const q = query(collection(db, 'courses'), where('companyId', '==', companyId));
-    const snapshot = await getDocs(q);
+    const coursesQuery = query(
+        ref(db, 'courses'),
+        orderByChild('companyId'),
+        equalTo(companyId)
+    );
+    const snapshot = await get(coursesQuery);
 
-    if (snapshot.empty) {
+    if (!snapshot.exists()) {
         list.innerHTML = '<p class="empty-state">Nenhum curso criado ainda.</p>';
         return;
     }
 
     list.innerHTML = '';
-    snapshot.forEach((docSnap) => {
-        const course = docSnap.data();
+    const courses = snapshot.val();
+    Object.entries(courses).forEach(([id, course]) => {
         const div = document.createElement('div');
         div.className = 'course-item';
         div.innerHTML = `
@@ -247,24 +234,30 @@ async function loadCompanyCourses(companyId) {
     });
 }
 
-// Preencher select de cursos para gerar turma
+// Preencher select com os cursos da empresa
 async function loadCoursesForSelect(companyId) {
     const select = document.getElementById('select-course-for-class');
     select.innerHTML = '<option value="">Selecione um curso</option>';
 
-    const q = query(collection(db, 'courses'), where('companyId', '==', companyId));
-    const snapshot = await getDocs(q);
+    const coursesQuery = query(
+        ref(db, 'courses'),
+        orderByChild('companyId'),
+        equalTo(companyId)
+    );
+    const snapshot = await get(coursesQuery);
 
-    snapshot.forEach((docSnap) => {
-        const course = docSnap.data();
+    if (!snapshot.exists()) return;
+
+    const courses = snapshot.val();
+    Object.entries(courses).forEach(([id, course]) => {
         const option = document.createElement('option');
-        option.value = docSnap.id;
+        option.value = id;
         option.textContent = course.title;
         select.appendChild(option);
     });
 }
 
-// Gerar Código de Turma (convite)
+// Gerar código de convite (o código é a própria chave)
 document.getElementById('btn-generate-invite').addEventListener('click', async () => {
     const user = auth.currentUser;
     if (!user) return;
@@ -275,15 +268,21 @@ document.getElementById('btn-generate-invite').addEventListener('click', async (
         return;
     }
 
-    // Gera um código curto e único (pode ser melhorado)
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    // Gera código único e verifica colisão
+    let inviteCode;
+    let attempts = 0;
+    do {
+        inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const check = await get(ref(db, 'inviteCodes/' + inviteCode));
+        if (!check.exists()) break;
+        attempts++;
+    } while (attempts < 5);
 
     try {
-        await addDoc(collection(db, 'inviteCodes'), {
-            code: inviteCode,
+        await set(ref(db, 'inviteCodes/' + inviteCode), {
             courseId: courseId,
             companyId: user.uid,
-            createdAt: serverTimestamp()
+            createdAt: Date.now()
         });
 
         document.getElementById('generated-code').textContent = inviteCode;
@@ -293,50 +292,40 @@ document.getElementById('btn-generate-invite').addEventListener('click', async (
     }
 });
 
-// === FUNÇÕES DO ESTUDANTE ===
+// =====================================================
+// FUNÇÕES DO ESTUDANTE
+// =====================================================
 
-// Ingressar em Turma via Código
+// Ingressar em turma
 document.getElementById('form-join-class').addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
     if (!user) return;
 
     const codeInput = document.getElementById('invite-code').value.trim().toUpperCase();
-    const joinError = document.getElementById('join-error');
-    joinError.classList.add('hidden');
 
     try {
-        // 1. Buscar o código de convite
-        const inviteQuery = query(collection(db, 'inviteCodes'), where('code', '==', codeInput));
-        const inviteSnap = await getDocs(inviteQuery);
-
-        if (inviteSnap.empty) {
+        // 1. Busca direta pelo código (chave)
+        const inviteSnap = await get(ref(db, 'inviteCodes/' + codeInput));
+        if (!inviteSnap.exists()) {
             showError('join-error', 'Código inválido ou expirado.');
             return;
         }
 
-        const inviteData = inviteSnap.docs[0].data();
-        const courseId = inviteData.courseId;
+        const { courseId } = inviteSnap.val();
 
-        // 2. Verificar se o aluno já está matriculado neste curso
-        const enrollmentQuery = query(
-            collection(db, 'enrollments'),
-            where('studentId', '==', user.uid),
-            where('courseId', '==', courseId)
-        );
-        const existingEnrollment = await getDocs(enrollmentQuery);
-
-        if (!existingEnrollment.empty) {
+        // 2. Verifica se já está matriculado (checagem O(1) via caminho)
+        const enrollRef = ref(db, `enrollments/${user.uid}/${courseId}`);
+        const existing = await get(enrollRef);
+        if (existing.exists()) {
             showError('join-error', 'Você já está matriculado neste curso.');
             return;
         }
 
-        // 3. Criar matrícula
-        await addDoc(collection(db, 'enrollments'), {
-            studentId: user.uid,
-            courseId: courseId,
-            inviteCode: codeInput,
-            enrolledAt: serverTimestamp()
+        // 3. Cria a matrícula
+        await set(enrollRef, {
+            enrolledAt: Date.now(),
+            inviteCode: codeInput
         });
 
         document.getElementById('form-join-class').reset();
@@ -347,33 +336,33 @@ document.getElementById('form-join-class').addEventListener('submit', async (e) 
     }
 });
 
-// Carregar turmas do estudante
+// Listar turmas do estudante
 async function loadStudentClasses(studentId) {
     const list = document.getElementById('student-classes-list');
     list.innerHTML = '<p class="empty-state">Carregando...</p>';
 
-    const enrollQuery = query(collection(db, 'enrollments'), where('studentId', '==', studentId));
-    const enrollSnap = await getDocs(enrollQuery);
+    const enrollSnap = await get(ref(db, 'enrollments/' + studentId));
 
-    if (enrollSnap.empty) {
+    if (!enrollSnap.exists()) {
         list.innerHTML = '<p class="empty-state">Você ainda não está matriculado em nenhuma turma.</p>';
         return;
     }
 
     list.innerHTML = '';
-    for (const enrollDoc of enrollSnap.docs) {
-        const enrollment = enrollDoc.data();
-        const courseRef = doc(db, 'courses', enrollment.courseId);
-        const courseSnap = await getDoc(courseRef);
+    const enrollments = enrollSnap.val();
+
+    for (const courseId of Object.keys(enrollments)) {
+        const enrollment = enrollments[courseId];
+        const courseSnap = await get(ref(db, 'courses/' + courseId));
 
         if (courseSnap.exists()) {
-            const course = courseSnap.data();
+            const course = courseSnap.val();
             const div = document.createElement('div');
             div.className = 'class-item';
             div.innerHTML = `
                 <strong>${course.title}</strong>
                 <span class="meta">${course.description}</span>
-                <span class="meta">Matriculado em: ${enrollment.enrolledAt ? new Date(enrollment.enrolledAt.toDate()).toLocaleDateString() : '—'}</span>
+                <span class="meta">Matriculado em: ${new Date(enrollment.enrolledAt).toLocaleDateString()}</span>
             `;
             list.appendChild(div);
         }
