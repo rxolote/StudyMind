@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyMind</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- TELA DE AUTENTICAÇÃO -->
+        <section id="auth-screen" class="screen active">
+            <div class="auth-container">
+                <h1>StudyMind</h1>
+                <p class="subtitle">Conectando estudantes e empresas através do conhecimento.</p>
+
+                <div id="auth-error" class="error-message hidden"></div>
+
+                <div class="social-buttons">
+                    <button id="btn-google" class="btn-social btn-google">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="18">
+                        Entrar com Google
+                    </button>
+                    <button id="btn-microsoft" class="btn-social btn-microsoft">
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/microsoft.svg" alt="Microsoft" width="18">
+                        Entrar com Microsoft
+                    </button>
+                </div>
+
+                <div class="divider"><span>ou</span></div>
+
+                <form id="form-email-auth">
+                    <input type="email" id="email" placeholder="E-mail" required>
+                    <input type="password" id="password" placeholder="Senha" required>
+                    <button type="submit" id="btn-email-auth" class="btn-primary">Entrar / Cadastrar</button>
+                </form>
+
+                <p class="toggle-auth">
+                    <span id="toggle-text">Ainda não tem conta?</span>
+                    <a href="#" id="toggle-auth-mode">Cadastre-se</a>
+                </p>
+
+                <!-- Seleção de papel (aparece apenas no cadastro) -->
+                <div id="role-selection" class="hidden">
+                    <p>Eu sou:</p>
+                    <div class="role-options">
+                        <label><input type="radio" name="role" value="student" checked> Estudante</label>
+                        <label><input type="radio" name="role" value="company"> Empresa</label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DASHBOARD DO ESTUDANTE -->
+        <section id="student-dashboard" class="screen">
+            <header>
+                <h2>Painel do Estudante</h2>
+                <button id="btn-logout-student" class="btn-logout">Sair</button>
+            </header>
+            <div class="dashboard-content">
+                <div class="card">
+                    <h3>Ingressar em uma Turma</h3>
+                    <p>Digite o código fornecido pela sua empresa.</p>
+                    <form id="form-join-class">
+                        <input type="text" id="invite-code" placeholder="Código da turma" required>
+                        <button type="submit" class="btn-primary">Entrar na Turma</button>
+                    </form>
+                    <div id="join-error" class="error-message hidden"></div>
+                </div>
+
+                <div class="card">
+                    <h3>Minhas Turmas</h3>
+                    <div id="student-classes-list">
+                        <p class="empty-state">Você ainda não está matriculado em nenhuma turma.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DASHBOARD DA EMPRESA -->
+        <section id="company-dashboard" class="screen">
+            <header>
+                <h2>Painel da Empresa</h2>
+                <button id="btn-logout-company" class="btn-logout">Sair</button>
+            </header>
+            <div class="dashboard-content">
+                <div class="card">
+                    <h3>Criar Novo Curso</h3>
+                    <form id="form-create-course">
+                        <input type="text" id="course-title" placeholder="Título do Curso" required>
+                        <textarea id="course-description" placeholder="Descrição do curso" rows="3" required></textarea>
+                        <button type="submit" class="btn-primary">Criar Curso</button>
+                    </form>
+                    <div id="course-error" class="error-message hidden"></div>
+                </div>
+
+                <div class="card">
+                    <h3>Meus Cursos</h3>
+                    <div id="company-courses-list">
+                        <p class="empty-state">Nenhum curso criado ainda.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Gerar Código de Turma</h3>
+                    <p>Selecione um curso para gerar um código de convite.</p>
+                    <select id="select-course-for-class">
+                        <option value="">Selecione um curso</option>
+                    </select>
+                    <button id="btn-generate-invite" class="btn-primary">Gerar Código</button>
+                    <div id="invite-result" class="hidden">
+                        <p>Código da turma: <strong id="generated-code"></strong></p>
+                        <p class="small">Compartilhe este código com os estudantes.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Scripts Firebase (Modular v9+) -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
